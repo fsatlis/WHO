@@ -1,0 +1,557 @@
+library(bslib)
+library(shiny)
+library(tidyr)
+library(dplyr)
+library(ggplot2)
+library(rpart)
+library(RColorBrewer)
+library(grDevices)
+library(rpart)
+library(corrplot)
+
+View site at https://jaredschultz.shinyapps.io/Project2app/
+
+#this data uses the WHO life expectancy dataset. it can be found on https://www.kaggle.com/kumarajarshi/life-expectancy-who
+file = "https://raw.githubusercontent.com/fsatlis/WHO/main/Life%20Expectancy%20Data.csv"
+file2 = "https://raw.githubusercontent.com/fsatlis/WHO/main/WHO%20discription.csv"
+
+Life_Expectancy_Data = read.csv(url(file))
+WHO_discription = read.csv(url(file2))
+
+Dev = subset(Life_Expectancy_Data, Life_Expectancy_Data$Status == "Developed")
+nonDev = subset(Life_Expectancy_Data, Life_Expectancy_Data$Status == "Developing")
+
+ui <- tagList(
+    navbarPage(theme = bs_theme(bootswatch = "cosmo"), "Project 2",
+               
+               tabPanel("Introduction",
+                        fluidPage(
+                            fluidRow(
+                                column(2, 
+                                     h1(strong("Information about the panel")),
+                                ),
+                                column(10, 
+                                       h3("The Global Health Observatory (GHO) data repository
+                            under World Health Organization (WHO) keeps track of
+                            the health status as well as many other related
+                            factors for all countries The datasets are made
+                            available to public for the purpose of health data
+                            analysis. The dataset related to life expectancy,
+                            health factors for 193 countries has been collected
+                            from the same WHO data repository website and its
+                            corresponding economic data was collected from
+                            United Nation website. Among all categories of
+                            health-related factors only those critical factors
+                            were chosen which are more representative. It has
+                            been observed that in the past 15 years , there has
+                            been a huge development in health sector resulting
+                            in improvement of human mortality rates especially
+                            in the developing nations in comparison to the past
+                            30 years. Therefore, in this project we have
+                            considered data from year 2000-2015 for 193
+                            countries for further analysis. The individual data
+                            files have been merged together into a single
+                            dataset. On initial visual inspection of the data 
+                            showed some missing values. As the datasets were
+                            from WHO, we found no evident errors. Missing data
+                            was handled in R software by using Missmap command.
+                            The result indicated that most of the missing data 
+                            was for population, Hepatitis B and GDP. The missing
+                            data were from less known countries like Vanuatu,
+                            Tonga, Togo,Cabo Verde etc. Finding all data for
+                            these countries was difficult and hence, it was
+                            decided that we exclude these countries from the
+                            final model dataset. The final merged
+                            file(final dataset) consists of 22 Columns and 2938
+                            rows which meant 20 predicting variables.
+                            All predicting variables was then divided into
+                            several broad categories:Immunization related
+                            factors, Mortality factors, Economical factors and
+                            Social factors. --- Taken from the discription of the 
+                            WHO Life Expectancy Dataset.
+                                          
+                                          ")
+                                )
+                            ),
+                            br(),
+                            br(),
+                            fluidRow(
+                                column(2, 
+                                       h1(strong("Explaining the Shiny App (Abstract)"))
+                                ),
+                                column(10, 
+                                       h3("The goal of this shiny app is to allow
+                                          the user to be able to interact with 
+                                          the data to allow them to better 
+                                          understand and explore the WHO Life Expectancy dataset.
+                                          A guide for this app and an explanation of the models can be found under the 'More' tab labeled as 
+                                          'Data Analysis Summary and Recommendations'. This tab elaborates more
+                                          on each model and gives the user a rough guide as to how to view the 
+                                          app after looking at the dataset.")
+                                )
+                            ),
+                            br(),
+                            br(),
+                            fluidRow(
+                              column(2, 
+                                     h1(strong("About the Author : Jared Schultz"))
+                              ),
+                              column(10, 
+                                     h3("Hello everyone using this app. Here I will explain a bit more about why I made this app.
+                                         The reason I decided to do a shiny app instead of a normal statistical report was becasue 
+                                        I have never made an interactive webiste. I plan to use shiny over the summer to create some interactive 
+                                        applications for basic statistic methods. I also plan to use these apps to review my past statistics 
+                                        classes and create sites that I can allow my future students to use. This app specficly is 
+                                        made so people who are in my class can explore the data without haveing to write a bunch of code.
+                                        ")
+                              )
+                            )
+                        )
+                        
+                        ),
+               
+               tabPanel("Dataset",
+                        fluidPage(
+                           titlePanel(strong("WHO Data Table")),
+                            br(),
+                            
+                            fluidRow(
+                                column(6, 
+                                       h3("On this page you can explore the entire data set 
+                               that this project will be working with. Please 
+                               refer to the 'Legend' for information on what 
+                               each variable means. Also note that not all of 
+                               our data is complete. This will directly affect
+                               how this data is analyzed."))
+                                
+                            ),
+                            br(),
+                            fluidRow(
+                                column(4,
+                                       selectInput("Country",
+                                                   "Country:",
+                                                   c("All",
+                                                     unique(as.character(Life_Expectancy_Data$Country))))
+                                ),
+                                column(4,
+                                       selectInput("Year",
+                                                   "Year:",
+                                                   c("All",
+                                                     unique(as.character(Life_Expectancy_Data$Year))))
+                                ),
+                                column(4,
+                                       selectInput("Status",
+                                                   "Status:",
+                                                   c("All",
+                                                     unique(as.character(Life_Expectancy_Data$Status))))
+                                )
+                            ),
+                            DT::dataTableOutput("table"),
+                            br(),
+                            br(),
+                            br(),
+                            fluidRow(
+                                column(4, 
+                                       h2(strong("Legend --->"))
+                                ),
+                                column(8, 
+                                       tableOutput("Legend")
+                                )
+                            )
+                        )
+                        
+                        ),
+               
+               tabPanel("Boxplot",
+                        fluidPage(
+                            titlePanel(strong("Box plots of Developing and Developed Countries")),
+                            br(),
+                            sidebarLayout(
+                                sidebarPanel(
+                                    selectizeInput("variable","Select Variable", choices = c("choose"="", colnames(Life_Expectancy_Data[-c(1:3)]))),
+                                    radioButtons("statuss","Country Status:",
+                                                 choices = list("Developed Countries" = "dev","Developing Countries" = "ndev","Both" = "both" ))
+                                                   
+                                ),
+                                mainPanel(h3(textOutput("summ")))
+                            ),
+                            plotOutput("Box1"),
+                             
+                            
+                        )
+                        
+                        
+                        ),
+               
+               tabPanel("Model 1",
+                        fluidPage(
+                          titlePanel(strong("A Plot of Life Expectancy Against the Selected Variable")),
+                            sidebarLayout(
+                                sidebarPanel(
+                                    selectizeInput("variable2","Select Variable", choices = c("choose"="", colnames(Life_Expectancy_Data[-c(1:3)])))
+                                ),
+                                mainPanel(h3(textOutput("model1text")))
+                                
+                            ),
+                            plotOutput("Life")
+                            
+                        )),
+               
+               tabPanel("Model 2",
+                        fluidPage(
+                          titlePanel(strong("A Plot of Years Against the Mean Values of the Selected Variable &  A Histogram of Residules")),
+                          br(),
+                          sidebarLayout(
+                            sidebarPanel(
+                              selectizeInput("variable3","Select Variable", choices = c("choose"="", colnames(Life_Expectancy_Data[-c(1:3)]))),
+                              radioButtons("statusss","Country Status:",
+                                           choices = list("Developed Countries" = "dev","Developing Countries" = "ndev","Both" = "both" ))
+                              
+                            ),
+                            mainPanel(h3(textOutput("mean")))
+                          ),
+                          fluidRow(
+                            column(8,plotOutput("plot2")),
+                            column(4,plotOutput("outliers"))
+                          )
+                          
+                          
+                          
+                        )
+                        
+                        ),
+               navbarMenu("More",
+                 tabPanel("Correlation chart",
+                          fluidPage(
+                            fluidRow(
+                              column(4,
+                                     titlePanel(strong("Correlation Plot")),
+                                     radioButtons("corstat","Country Status:",
+                                                  choices = list("Developed Countries" = "dev","Developing Countries" = "ndev","Both" = "both" ))
+                              ),
+                              br(),
+                              column(8,
+                                 mainPanel(textOutput("corplot"))
+                              )
+                             
+                             
+                            ),
+                            fluidRow(
+                              column(12,
+                                align = "center",
+                                plotOutput("corr")
+                              )
+                            )
+                            
+                          )
+                          
+                          ),
+                 tabPanel("Data Analysis Summary and Recommendations",
+                          fluidPage(
+                            fluidRow(
+                              column(2, 
+                                     h1(strong("Recommendations for the User"))
+                              ),
+                              column(10, 
+                                     h3("The First Recommendation: Vist the Boxplot tab after looking at the dataset and explore the
+                                        different plots. Understand how in this dataset we have missing values and how there are a lot 
+                                        more missing values in some variables than others. There are also a lot of outliers in 
+                                        the dataset.(After exploring the data I believe that there are some input errors in this
+                                        data set but I may be wrong but maybe try to find one yourself...hint: look at the data on the first
+                                        page and you might notice it too). Also notice the difference
+                                        in size when we look at data in developed countries vs developing as well as how the mean value differ. "),
+                                     br(),
+                                     h3("The Second Recommendation: Look at Model 1. This model is great for looking at each and every existing data point.
+                                        The plot also allows you to see which data is from what status. This is useful for a holistic view of the data and
+                                        viewing trends. A linear regression line is added to each plot for the user as well as information from the linear model."),
+                                     br(),
+                                     h3("The Third Recommendation: Look at Model 2. This model is great for looking at the trend of each variable with respect to time
+                                        in years. This model takes the mean of the value for that year and creates a data point to plot for the selected status type. 
+                                        Here we can see much more clear linear trends and can make better interpretations in our data with respect to that status of a 
+                                        country. This model also includes a histogram of the residules of the linear model that is shown.
+                                        This model also allows us to see both status plotted at the same time but it does not include a linear model nor a
+                                        residue histogram plot."),
+                                     br(),
+                                     h3("Optional Recommendation: Explore the Correlation Plot. This is visual representation of the correlation  between all of 
+                                        the variables in the dataset. Using this data we could make specific linear models or a multiple linear regression model.
+                                        We can also see that for a chosen response variable we may have multicollinearity and we may need to procede with caution
+                                        before making a multiple linear model.")
+                              )
+                            ),
+                            br(),
+                            br(),
+                            fluidRow(
+                              column(2, 
+                                     h2(strong("Thank you"))
+                              ),
+                              column(10, 
+                                     h3(" Have fun playing around with the data. ")
+                              )
+                            
+                            )
+                          )
+                          
+                          )
+                 
+               )
+               
+               
+               
+ )
+)
+
+
+server <- function(input, output) {
+
+    #Creating the Legend
+    output$Legend <- renderTable({ WHO_discription})
+    
+    #creating our ineractive table
+    output$table <- DT::renderDataTable(DT::datatable({
+        data <- Life_Expectancy_Data
+        if (input$Country != "All") {
+            data <- data[data$Country == input$Country,]
+        }
+        if (input$Year != "All") {
+            data <- data[data$Year == input$Year,]
+        }
+        if (input$Status != "All") {
+            data <- data[data$Status == input$Status,]
+        }
+        data
+    }))
+    
+  
+    #Creating the BOx1
+    output$Box1 = renderPlot({
+      data <- Life_Expectancy_Data
+      
+      if(input$statuss == "dev"){
+        data <- data[data$Status == "Developed",]
+       boxplot(data[[input$variable]], main = "Box plot",
+                col = "coral3")
+      }
+      if(input$statuss == "ndev"){
+        data <- data[data$Status == "Developing",]
+        boxplot(data[[input$variable]], main = "Box plot",
+                col = "coral3")
+      }
+      if(input$statuss == "both"){
+        data <- data
+        boxplot(Life_Expectancy_Data[[input$variable]], main = "Box plot",
+                col = "coral3")
+      }
+    },height = 1000)
+    
+    #box plot info
+    boxplotinfo = reactive({
+      
+      data <- Life_Expectancy_Data
+      
+      if(input$statuss == "dev"){
+        data <- data[data$Status == "Developed",]
+        
+      }
+      if(input$statuss == "ndev"){
+        data <- data[data$Status == "Developing",]
+        
+      }
+      if(input$statuss == "both"){
+        data <- data
+       
+      }
+      
+      s = boxplot.stats(data[[input$variable]])$out
+      s = length(s)
+      l = length(data[[input$variable]]) - sum(is.na(data[[input$variable]]))
+      na =  sum(is.na(data[[input$variable]]))
+      avg = mean(data[[input$variable]], na.rm = T)
+      df = data.frame(s = s,l = l,na = na, avg =avg)
+      df
+      
+    })
+    
+    output$summ = renderText({
+      
+      paste0("From the box plot we can see the outliers in our data. For now we
+             will keep the outliers in the data. There is a total of ", boxplotinfo()$s,
+             " outliers in the selected data that contains ",boxplotinfo()$l, "
+             recoreded objects with ", boxplotinfo()$na," missing objects. For this study 
+             we will keep the NA values in the data set and work around them. Otherwise
+             common methods include filling them close valued numbers or deletiung the 
+             row where NA exist. The mean value of the selected variable is ",signif(boxplotinfo()$avg, 2 ),".")
+    })
+    
+    
+    
+    #reactive LM and RM
+    
+    Data = reactive({
+        df = data.frame(x = Life_Expectancy_Data[[4]],
+                        y = Life_Expectancy_Data[[input$variable2]])
+        df
+    })
+    
+    LM.Data = reactive({
+        lm(Data()$y ~ Data()$x )
+    })
+    
+    R.Data = reactive({
+        rpart(Data()$y ~ Data()$x)
+    })
+    
+    #creating plot to plot things against life. 
+    output$Life = renderPlot({
+        
+       # Life_Expectancy_Data[!is.na(Life_Expectancy_Data$`Life expectancy`),]
+        
+        #two problems #1 data needs to be sorted correctly for lines to work
+        # other problem is that data needs to be the same length...
+        
+        #idea number one 
+      
+        
+        plot(x = Life_Expectancy_Data[[4]],y = Life_Expectancy_Data[[input$variable2]],
+             col = ifelse(Life_Expectancy_Data$Status == "Developed", rgb(0.95, 0, 0, 0.25), rgb(0, 0, 0.95, 0.20)),
+             pch = ifelse(Life_Expectancy_Data$Status == "Developed", 17, 19),
+             xlab = "Life Expectancy",
+             ylab = paste(input$variable2),
+             main = paste0("Life expectancy vs ", paste(input$variable2))
+             )
+        abline(LM.Data(), lwd = 3)
+        #abline(R.Data(), lwd = 3, col = "green4")
+        #lines(lf$`Life expectancy`, predict(R.Data()), col = "green4")
+        legend("topright",
+               pch = c(17,19),
+               c("Developed", "Developing"),
+               col = c("blue","red") 
+               )
+    }, height = 1000)
+    
+    
+    output$model1text = renderText({
+      
+      y = coef(LM.Data())
+      
+      z = summary(LM.Data())$adj.r.squared
+      
+      paste0("From this model we can see that our linear model with outliers gives
+             us the following information. The estimated (slope, intercept) is (",
+             signif(y[2],digits = 2),",",signif(y[1],digits = 2),"). The adjusted
+             R squared value is ", signif(z,digits = 2)," .")
+      
+    })
+    
+    Data2 = reactive({
+      
+      data = Life_Expectancy_Data %>% group_by(Status,Year) %>% summarise(mean(.data[[input$variable3]], na.rm = T))
+      
+      if(input$statusss == "dev"){
+        data <- data[data$Status == "Developed",]
+        
+      }
+      if(input$statusss == "ndev"){
+        data <- data[data$Status == "Developing",]
+        
+      }
+      if(input$statusss == "both"){
+        data <- data
+      }
+      
+      data
+      
+      
+    })
+    
+    lm2 = reactive({
+      
+      lm(Data2()[[3]]~ Data2()$Year)
+      
+    })
+    
+    output$plot2 = renderPlot({
+      
+      data = Life_Expectancy_Data %>% group_by(Status,Year) %>% summarise(mean(.data[[input$variable3]], na.rm = T))
+      
+      if(input$statusss == "dev"){
+        data <- data[data$Status == "Developed",]
+        
+      }
+      if(input$statusss == "ndev"){
+        data <- data[data$Status == "Developing",]
+        
+      }
+      if(input$statusss == "both"){
+        data <- data
+        
+      }
+     plot(x =data$Year, y = data[[3]],
+          col = ifelse(data$Status == "Developed", "blue3","red3"),
+          pch = ifelse(data$Status == "Developed", 17, 19),
+          cex = 2,
+          xlab = "Year",
+          ylab = paste(input$variable3),
+          main = paste0("Years vs ",paste(input$variable3) )
+     )
+     if(input$statusss != "both"){abline(lm2(), lwd = 3)}
+    
+     legend("topright",
+            pch = c(17,19),
+            c("Developed", "Developing"),
+            col = c("blue","red") 
+     )
+          
+     
+      
+    }, height = 600)
+    
+    output$mean = renderText({
+      
+      y = coef(lm2())
+      z = summary(lm2())$adj.r.squared
+      if(input$statusss != "both"){
+      paste0("From this model we can see that our linear model with outliers gives
+             us the following information. The estimated (slope, intercept) is (",
+             signif(y[2],digits = 2),",",signif(y[1],digits = 2),"). The adjusted
+             R squared value is ", signif(z,digits = 2)," .")}else{
+               paste0( "Linear regession data not currently available")
+             }
+      
+    })
+    
+    output$outliers = renderPlot({
+      r = residuals(lm2())
+      if(input$statusss != "both"){
+      hist(r,
+           main = paste0("Residules of Years vs ", paste(input$variable3)),
+           col = "yellowgreen"
+           )
+      }
+      
+    },height = 600, width = 600)
+    
+    output$corr = renderPlot({
+      
+      data <- Life_Expectancy_Data
+      
+      if(input$corstat == "dev"){
+        data <- data[data$Status == "Developed",]
+        
+      }
+      if(input$corstat == "ndev"){
+        data <- data[data$Status == "Developing",]
+        
+      }
+      if(input$corstat == "both"){
+        data <- data
+        
+      }
+      
+      corrplot::corrplot(cor(data[-c(1:3)], use = "complete.obs"), type = "lower")
+      
+    },width = 1000, height = 1000)
+  
+}
+
+
+shinyApp(ui = ui, server = server)
